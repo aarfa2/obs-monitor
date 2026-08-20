@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>OBS 机群监控系统 — 项目汇报</title>
+  <style>
+    @page { size: A4; margin: 22mm 20mm 24mm 20mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", "PingFang SC", "SimSun", sans-serif;
+      font-size: 11pt;
+      line-height: 1.65;
+      color: #1a1a1a;
+      max-width: 170mm;
+      margin: 0 auto;
+      padding: 0;
+    }
+    h1 {
+      font-size: 20pt;
+      font-weight: 700;
+      margin: 0 0 8pt;
+      color: #111;
+      border-bottom: 2pt solid #2563eb;
+      padding-bottom: 10pt;
+    }
+    h2 {
+      font-size: 13pt;
+      font-weight: 700;
+      margin: 22pt 0 10pt;
+      color: #1e40af;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 11.5pt;
+      font-weight: 700;
+      margin: 16pt 0 8pt;
+      page-break-after: avoid;
+    }
+    p { margin: 0 0 8pt; }
+    .meta {
+      background: #f8fafc;
+      border: 1pt solid #e2e8f0;
+      border-radius: 4pt;
+      padding: 12pt 14pt;
+      margin: 14pt 0 20pt;
+      font-size: 10.5pt;
+    }
+    .meta p { margin: 3pt 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10pt 0 14pt;
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1pt solid #cbd5e1;
+      padding: 7pt 9pt;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #eff6ff;
+      font-weight: 700;
+      color: #1e3a8a;
+    }
+    tr:nth-child(even) td { background: #fafafa; }
+    pre {
+      background: #f1f5f9;
+      border: 1pt solid #cbd5e1;
+      border-radius: 4pt;
+      padding: 12pt 14pt;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9pt;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      margin: 10pt 0 14pt;
+      page-break-inside: avoid;
+    }
+    blockquote {
+      margin: 10pt 0;
+      padding: 8pt 12pt;
+      border-left: 3pt solid #2563eb;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 10pt;
+    }
+    ul { margin: 6pt 0 10pt; padding-left: 18pt; }
+    li { margin: 4pt 0; }
+    .footer {
+      margin-top: 24pt;
+      padding-top: 10pt;
+      border-top: 1pt solid #e2e8f0;
+      font-size: 9pt;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+<h1>OBS 机群监控系统 — 项目汇报</h1>
+
+<div class="meta">
+  <p><strong>汇报人：</strong>Scott</p>
+  <p><strong>汇报日期：</strong>2026 年 8 月 20 日</p>
+  <p><strong>项目版本：</strong>v0.1.0（局域网场景已可实际使用）</p>
+  <p><strong>适用范围：</strong>直播/录播现场多台 OBS 推流电脑的集中监控</p>
+</div>
+
+<h2>一、摘要</h2>
+<p>本项目是一套面向<strong>生产推流机房</strong>的值班监控系统，解决「十几台 OBS 电脑分散运行、故障发现慢、排障证据散」的问题。</p>
+<p>系统采用<strong>中心看板 + 各机轻量采集器</strong>架构：值班人员在一个网页上即可查看全部机器是否在线、是否在推流、是否存在渲染/编码/网络压力，并在异常时通过 Webhook 自动通知值班群。<strong>只监控、不控制</strong>——不能通过本系统修改 OBS 配置或停推流，避免误操作风险。</p>
+
+<h2>二、背景与痛点</h2>
+<p>现场典型情况：多台电脑各自用 OBS 推流到服务器，采集卡、摄像头、编码器、上行网络任一环节出问题，画面就会卡、花、停，甚至整机静默。</p>
+
+<table>
+  <thead>
+    <tr><th>现状问题</th><th>影响</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>需逐台远程桌面或到机房查看</td><td>机器一多，人力跟不上</td></tr>
+    <tr><td>往往观众先投诉才发现</td><td>故障发现滞后，影响播出质量</td></tr>
+    <tr><td>出事后翻各机 OBS 日志</td><td>时间对不齐、容易漏、排障慢</td></tr>
+    <tr><td>若开放 OBS 远程控制接口</td><td>存在误操作停推流等生产风险</td></tr>
+  </tbody>
+</table>
+
+<p><strong>核心需求：</strong>看得见（集中看板）→ 来得及（自动报警）→ 查得清（日志检索与掉帧分类）→ 控得住风险（监控与控制分离）。</p>
+
+<h2>三、建设目标</h2>
+<ol>
+  <li><strong>集中可视：</strong>全部 OBS 机器推流状态、健康指标一屏呈现</li>
+  <li><strong>主动告警：</strong>停推、重连、失联等异常自动通知，不依赖人盯屏</li>
+  <li><strong>快速定位：</strong>区分渲染掉帧、编码掉帧、网络丢帧，支持近 24 小时日志检索</li>
+  <li><strong>安全边界：</strong>只读采集，不向 OBS 下发任何控制指令</li>
+</ol>
+
+<h2>四、系统能力与业务价值</h2>
+
+<h3>4.1 已具备功能</h3>
+<table>
+  <thead>
+    <tr><th>模块</th><th>能力说明</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>机群总览</strong></td><td>每台机器一张卡片：在线/离线、推流状态、重连、压力等级、码率、CPU；异常机器自动置顶</td></tr>
+    <tr><td><strong>单机详情</strong></td><td>场景与源列表、码率/帧率/拥塞、三类掉帧率、录像状态、历史曲线</td></tr>
+    <tr><td><strong>智能报警</strong></td><td>OBS 失联、意外停推、持续重连、采集器心跳超时；支持 Webhook（可接企业微信/钉钉）；恢复后自动发恢复通知</td></tr>
+    <tr><td><strong>日志中心</strong></td><td>汇聚各机 OBS 原生日志，按分类/级别/关键字检索；敏感信息脱敏；中心保留约 24 小时</td></tr>
+  </tbody>
+</table>
+
+<h3>4.2 三类掉帧（排障核心指标）</h3>
+<p>比单一「GPU 占用」更有现场指导意义：</p>
+<ul>
+  <li><strong>渲染掉帧</strong> → 场景过重、浏览器源、滤镜等合成压力</li>
+  <li><strong>编码掉帧</strong> → 编码器过载</li>
+  <li><strong>网络丢帧</strong> → 上行带宽不足或服务器侧不稳</li>
+</ul>
+<blockquote>OBS 官方接口不提供 GPU 占用数据，系统不编造该指标；渲染掉帧是判断「显卡/合成压力」的可靠依据。</blockquote>
+
+<h3>4.3 业务价值</h3>
+<table>
+  <thead>
+    <tr><th>价值维度</th><th>预期效果</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>故障发现</td><td>从「观众反馈/人工巡机」→「看板变红 + 即时通知」</td></tr>
+    <tr><td>排障效率</td><td>先看掉帧类型和日志分类，减少盲目重启和远程桌面</td></tr>
+    <tr><td>规模扩展</td><td>10 台与 20 台同一套中心，按「一机一采集器」线性扩展</td></tr>
+    <tr><td>生产安全</td><td>监控面与控制面分离，OBS 配置权仍在现场机</td></tr>
+  </tbody>
+</table>
+
+<h2>五、技术方案概要</h2>
+<pre>OBS 电脑 × N              监控服务器（Hub）              值班终端
+┌──────────────┐         ┌─────────────────┐         ┌──────────┐
+│ OBS 推流      │         │ 网页看板         │         │ 浏览器    │
+│ 采集器 Agent  │ ──WS──► │ 日志存储 + 报警  │ ◄─HTTP─ │ 机群→单机 │
+│ 只连本机 OBS  │         │ 端口 8787        │         └──────────┘
+└──────────────┘         └─────────────────┘</pre>
+
+<p><strong>设计要点：</strong></p>
+<ul>
+  <li><strong>Agent（采集器）：</strong>跑在每台 OBS 电脑，无界面、轻量（约数十 MB 内存），每秒约 1 次只读查询，不装 Electron，避免与推流抢资源</li>
+  <li><strong>Hub（中心）：</strong>跑在监控服务器一台，对外提供唯一看板地址，接收全部采集器数据，存日志、发 Webhook</li>
+  <li><strong>技术栈：</strong>TypeScript + Fastify（后端）+ React（看板），基于 OBS 28+ 官方 WebSocket 接口</li>
+</ul>
+<p><strong>安全设计：</strong>各机 OBS WebSocket 仅监听本机（127.0.0.1:4455），采集器只读采集后出站上报；中心<strong>不会</strong>向采集器下发控制命令。</p>
+
+<h2>六、部署与运维</h2>
+
+<h3>6.1 部署方式</h3>
+<table>
+  <thead>
+    <tr><th>角色</th><th>部署位置</th><th>启动方式</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>中心 Hub</td><td>监控服务器 1 台</td><td>npm run build && npm start，看板 http://服务器IP:8787</td></tr>
+    <tr><td>采集器 Agent</td><td>每台 OBS 电脑 1 个</td><td>npm run start:agent，配置中心地址、Token、显示名、本机 OBS 密码</td></tr>
+  </tbody>
+</table>
+
+<h3>6.2 运维建议</h3>
+<ol>
+  <li>各机 OBS WebSocket <strong>不对公网/全域网开放</strong>，仅本机访问</li>
+  <li>采集器与中心共用 Token；每台机器自动生成唯一 ID，<strong>禁止复制</strong>到其他机器</li>
+  <li>日志默认保留 24 小时，中心上限约 20 万条，避免磁盘堆满</li>
+  <li>采集器可配置为 Windows 开机服务（NSSM / 任务计划程序）</li>
+</ol>
+
+<h2>七、风险与系统边界</h2>
+
+<h3>7.1 明确能做到的</h3>
+<ul>
+  <li>实时监控推流状态、掉帧、源列表、OBS 日志</li>
+  <li>采集器/整机失联检测（含电脑死机、进程被杀）</li>
+  <li>局域网内十余台机器规模完全可承受</li>
+</ul>
+
+<h3>7.2 明确做不到的（需管理预期）</h3>
+<table>
+  <thead>
+    <tr><th>边界</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>观众端 CDN 卡顿</td><td>本系统监控的是推流端，不是 CDN/播放端</td></tr>
+    <tr><td>每路摄像机画面监看</td><td>不是多路视频监看系统，是 OBS 运行状态监控</td></tr>
+    <tr><td>推流服务器自身状态</td><td>不能替代 RTMP/SRT 服务器侧监控</td></tr>
+    <tr><td>GPU 占用百分比</td><td>OBS 接口不提供，系统不编造</td></tr>
+    <tr><td>远程控制 OBS</td><td>刻意不做，避免生产事故</td></tr>
+  </tbody>
+</table>
+
+<h3>7.3 资源影响评估</h3>
+<p>采集器为无界面进程，约每秒 1 次轻量只读查询，<strong>正常情况下对 OBS 编码影响可忽略</strong>。</p>
+
+<h2>八、下一步计划（建议优先级）</h2>
+<table>
+  <thead>
+    <tr><th>优先级</th><th>事项</th><th>投入</th><th>预期收益</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>P0</td><td>采集器做成开机服务 + 简易安装包</td><td>小</td><td>便于铺到十余台，降低部署门槛</td></tr>
+    <tr><td>P0</td><td>Webhook 接入现有值班群，约定响应流程</td><td>小</td><td>报警真正落地，不再依赖盯屏</td></tr>
+    <tr><td>P1</td><td>小范围试点（3～5 台）跑一周，收集值班反馈</td><td>中</td><td>验证指标与报警阈值是否贴合现场</td></tr>
+    <tr><td>P2</td><td>若需外网查看，采集器出站到固定中心</td><td>中</td><td>出门也能看，仍不暴露 OBS 端口</td></tr>
+    <tr><td>P3</td><td>日志长期归档（若合规/审计需要）</td><td>大</td><td>需单独立项</td></tr>
+  </tbody>
+</table>
+
+<h2>九、结论与决策建议</h2>
+<p><strong>项目定位：</strong>面向生产推流机房的<strong>值班监控工具</strong>，不是 OBS 美化插件，也不是导播台。</p>
+<p><strong>核心价值：</strong>用很小的本机占用，把「十几台机器好不好」变成<strong>可看、可查、可叫人</strong>的状态，同时把误操作风险关在门外。</p>
+<p><strong>建议决策：</strong></p>
+<ol>
+  <li><strong>批准在局域网内小范围试点</strong>（3～5 台 + 1 台中心服务器），验证值班流程</li>
+  <li><strong>安排运维对接 Webhook</strong>（企业微信/钉钉等），明确「失联/停推」响应人</li>
+  <li><strong>试点稳定后批量铺采集器</strong>，优先做成开机自启，减少人工维护</li>
+</ol>
+
+<div class="footer">
+  本报告基于 OBS Monitor 项目整理 · 2026-08-20
+</div>
+
+</body>
+</html>
