@@ -8,7 +8,8 @@ export type AlertKey =
   | "obs.disconnected"
   | "stream.stopped"
   | "stream.reconnecting"
-  | "agent.stale";
+  | "agent.stale"
+  | "quality.bitrate_over";
 
 export type AlertSeverity = "P0" | "P1";
 export type AlertStatus = "firing" | "resolved";
@@ -152,6 +153,45 @@ export type Snapshot = {
   history: HistoryPoint[];
 };
 
+export type QualityKind =
+  | "bitrate.over"
+  | "bitrate.under"
+  | "pressure.render"
+  | "pressure.encode"
+  | "pressure.network"
+  | "pressure.mixed";
+
+export type QualityInterval = {
+  id: number;
+  machineId: string;
+  kind: QualityKind;
+  startedAt: number;
+  endedAt: number | null;
+  durationMs: number;
+  peakKbps: number;
+  minKbps: number;
+  avgKbps: number;
+  samples: number;
+};
+
+export type QualityStats = {
+  overCount: number;
+  overMs: number;
+  underCount: number;
+  underMs: number;
+  pressureCount: number;
+  pressureMs: number;
+};
+
+export type QualityQueryResult = {
+  minKbps: number;
+  maxKbps: number;
+  holdSec: number;
+  retainedHours: number;
+  stats: QualityStats;
+  intervals: QualityInterval[];
+};
+
 export type FleetMachine = {
   machineId: string;
   displayName: string;
@@ -166,6 +206,7 @@ export type FleetMachine = {
   alertCount: number;
   videoSources: number;
   bitrateKbps: number;
+  bitrateBand: "ok" | "over" | "under";
   cpuUsage: number;
   lastError: string | null;
 };

@@ -74,7 +74,9 @@ export function FleetPage() {
               <dl className="fleet-kv">
                 <div>
                   <dt>推流</dt>
-                  <dd>{machine.streaming ? `${formatBitrate(machine.bitrateKbps)}` : machine.reconnecting ? "重连" : "未推"}</dd>
+                  <dd className={machine.bitrateBand === "over" ? "band-over" : machine.bitrateBand === "under" ? "band-under" : undefined}>
+                {machine.streaming ? `${formatBitrate(machine.bitrateKbps)}` : machine.reconnecting ? "重连" : "未推"}
+              </dd>
                 </div>
                 <div>
                   <dt>压力</dt>
@@ -136,7 +138,7 @@ function useFleet() {
 function cardTone(machine: FleetMachine): string {
   if (!machine.online) return "bad";
   if (machine.reconnecting || machine.alertCount > 0) return "hot";
-  if (machine.pressure !== "ok") return "hot";
+  if (machine.pressure !== "ok" || machine.bitrateBand === "over") return "hot";
   return "ok";
 }
 

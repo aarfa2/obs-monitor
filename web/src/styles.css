@@ -172,6 +172,10 @@ button:disabled {
   border-color: var(--warn);
 }
 
+.metric.dim {
+  border-color: #5c574c;
+}
+
 .verdict {
   margin: 14px 0 0;
   padding: 8px 10px;
@@ -444,11 +448,67 @@ a {
   font-size: 13px;
 }
 
+.quality-ledger .log-head h2 {
+  margin: 0;
+}
+
+.quality-ledger .log-tools {
+  margin-top: 8px;
+}
+
+.quality-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.quality-summary small {
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.quality-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.quality-rows li {
+  display: grid;
+  grid-template-columns: 88px minmax(220px, 1.4fr) 88px 1fr;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  align-items: baseline;
+}
+
+.band-over {
+  color: var(--warn);
+}
+
+.band-under {
+  color: var(--muted);
+}
+
+.quality-rows li.warn .cat,
+.quality-rows li.warn .log-text {
+  color: var(--warn);
+}
+
 @media (max-width: 1100px) {
   .top,
   .metrics,
   .lower,
   .mid {
     grid-template-columns: 1fr;
+  }
+
+  .quality-rows li {
+    grid-template-columns: 1fr 1fr;
   }
 }

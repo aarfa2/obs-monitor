@@ -10,6 +10,8 @@ import { loadHubConfig, projectRoot } from "./config.ts";
 import { FleetRegistry } from "./hub/registry.ts";
 import { lanUrls } from "./lan.ts";
 import { LogStore } from "./logs/store.ts";
+import { QualityStore } from "./quality/store.ts";
+import { notifies, QualityTracker } from "./quality/tracker.ts";
 import type {
   AgentToHub,
   AlertState,
@@ -19,13 +21,23 @@ import type {
   HubToBrowser,
   LogCategory,
   LogLevel,
+  QualityInterval,
   Snapshot,
 } from "./shared/types.ts";
 
 const config = loadHubConfig();
 const root = projectRoot();
 const logStore = new LogStore(join(root, "data"));
-const fleet = new FleetRegistry(config.staleSec * 1000);
+const qualityStore = new QualityStore(join(root, "data"));
+const quality = new QualityTracker(
+  qualityStore,
+  config.quality.minKbps,
+  config.quality.maxKbps,
+  config.quality.holdSec * 1000,
+);
+const qualityNotifyAt = new Map<string, number>();
+const qualityNotified = new Set<number>();
+const fleet = new FleetRegistry(config.staleSec * 1000, config.quality);
 const agentSockets = new Map<string, WebSocket>();
 const browsers = new Set<{ socket: WebSocket; watch: string | null }>();
 
@@ -37,6 +49,7 @@ app.get("/api/health", async () => ({
   ok: true,
   machines: fleet.summaries().length,
   webhookConfigured: Boolean(config.alerts.webhookUrl),
+  quality: config.quality,
 }));
 
 app.get("/api/fleet", async () => fleet.summaries());
@@ -75,6 +88,12 @@ app.get("/api/logs", async (req) => {
     level: level === "info" || level === "warn" || level === "error" ? level : "",
     limit: Number(query.limit ?? 200) || 200,
   });
+});
+
+app.get("/api/quality", async (req, reply) => {
+  const { machineId } = req.query as { machineId?: string };
+  if (!machineId) return reply.code(400).send({ error: "machineId required" });
+  return qualityStore.query(machineId, config.quality);
 });
 
 app.post("/api/alerts/test", async (_req, reply) => {
@@ -151,6 +170,7 @@ app.get("/agent", { websocket: true }, (socket) => {
     if (!machineId) return;
     if (msg.type === "snapshot") {
       fleet.snapshot(machineId, msg.payload);
+      applyQuality(machineId, msg.payload, fleet.get(machineId)?.displayName);
       pushSnapshot(machineId, fleet.get(machineId)?.snapshot ?? msg.payload);
       broadcastFleet();
       return;
@@ -217,6 +237,7 @@ setInterval(() => {
   for (const { slot, becameStale } of stale) {
     if (!becameStale) continue;
     const now = Date.now();
+    quality.closeMachine(slot.machineId, now);
     const alert: AlertState = {
       key: "agent.stale",
       severity: "P0",
@@ -288,8 +309,47 @@ async function notify(alert: AlertState, machineId?: string, displayName?: strin
   }
 }
 
+function applyQuality(machineId: string, snap: Snapshot, displayName?: string): void {
+  const changes = quality.observe(machineId, snap);
+  for (const change of changes) {
+    if (!notifies(change.interval.kind)) continue;
+    if (change.status === "opened") {
+      if (!qualityCooldownOk(machineId, snap.ts)) continue;
+      qualityNotifyAt.set(machineId, snap.ts);
+      qualityNotified.add(change.interval.id);
+    } else if (!qualityNotified.delete(change.interval.id)) {
+      continue;
+    }
+    void notify(qualityAlert(change.interval, change.status, snap.ts), machineId, displayName);
+  }
+}
+
+function qualityCooldownOk(machineId: string, now: number): boolean {
+  const last = qualityNotifyAt.get(machineId) ?? 0;
+  return now - last >= config.alerts.cooldownSec * 1000;
+}
+
+function qualityAlert(interval: QualityInterval, status: "opened" | "closed", now: number): AlertState {
+  const peak = (interval.peakKbps / 1000).toFixed(2);
+  const max = (config.quality.maxKbps / 1000).toFixed(2);
+  return {
+    key: "quality.bitrate_over",
+    severity: "P1",
+    status: status === "opened" ? "firing" : "resolved",
+    title: "码率越上限",
+    message:
+      status === "opened"
+        ? `推流码率持续高于 ${max} Mbps（峰值 ${peak} Mbps）`
+        : `码率已回到 ${max} Mbps 以下（峰值 ${peak} Mbps）`,
+    since: interval.startedAt,
+    updatedAt: now,
+  };
+}
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
+    qualityStore.closeAllOpen(Date.now());
+    qualityStore.stop();
     logStore.stop();
     void app.close().then(() => process.exit(0));
   });

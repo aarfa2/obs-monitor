@@ -7,7 +7,15 @@ export async function postWebhook(
 ): Promise<void> {
   if (!url) return;
   const who = extra?.displayName ? `${extra.displayName} ` : "";
-  const text = `[${alert.severity}] ${who}${alert.status === "firing" ? "报警" : "恢复"} ${alert.title}: ${alert.message}`;
+  const verb =
+    alert.key === "quality.bitrate_over"
+      ? alert.status === "firing"
+        ? "提醒"
+        : "恢复"
+      : alert.status === "firing"
+        ? "报警"
+        : "恢复";
+  const text = `[${alert.severity}] ${who}${verb} ${alert.title}: ${alert.message}`;
   const body = {
     text,
     source: "obs-monitor",

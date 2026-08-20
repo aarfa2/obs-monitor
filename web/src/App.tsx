@@ -5,6 +5,9 @@ import type {
   LogCategory,
   LogLevel,
   LogQueryResult,
+  QualityInterval,
+  QualityKind,
+  QualityQueryResult,
   Snapshot,
 } from "../../src/shared/types.ts";
 import { FleetPage } from "./Fleet";
@@ -33,11 +36,15 @@ function MachineView({ machineId }: { machineId: string }) {
   const { snap, uiConnected } = useSnapshot(machineId);
   const [webhookOk, setWebhookOk] = useState<boolean | null>(null);
   const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "fail">("idle");
+  const [qualityCfg, setQualityCfg] = useState({ minKbps: 2000, maxKbps: 3100, holdSec: 5 });
 
   useEffect(() => {
     void fetch("/api/health")
       .then((res) => res.json())
-      .then((data: { webhookConfigured?: boolean }) => setWebhookOk(Boolean(data.webhookConfigured)))
+      .then((data: { webhookConfigured?: boolean; quality?: { minKbps: number; maxKbps: number; holdSec: number } }) => {
+        setWebhookOk(Boolean(data.webhookConfigured));
+        if (data.quality) setQualityCfg(data.quality);
+      })
       .catch(() => setWebhookOk(null));
   }, []);
 
@@ -115,7 +122,19 @@ function MachineView({ machineId }: { machineId: string }) {
       )}
 
       <section className="metrics">
-        <Metric label="码率" value={formatBitrate(snap.stream.bitrateKbps)} series={pick(snap.history, "bitrateKbps")} />
+        <Metric
+          label="码率"
+          value={formatBitrate(snap.stream.bitrateKbps)}
+          sub={`舒适区 ${(qualityCfg.minKbps / 1000).toFixed(2)}–${(qualityCfg.maxKbps / 1000).toFixed(2)} Mbps`}
+          tone={
+            streaming && snap.stream.bitrateKbps > qualityCfg.maxKbps
+              ? "warn"
+              : streaming && snap.stream.bitrateKbps < qualityCfg.minKbps
+                ? "dim"
+                : undefined
+          }
+          series={pick(snap.history, "bitrateKbps")}
+        />
         <Metric
           label="帧率"
           value={`${snap.stats.fps.toFixed(1)} / ${snap.stats.targetFps ? snap.stats.targetFps.toFixed(0) : "—"}`}
@@ -241,9 +260,125 @@ function MachineView({ machineId }: { machineId: string }) {
         </div>
       </section>
 
+      <QualityLedger machineId={machineId} />
       <LogExplorer machineId={machineId} logFile={snap.logFile} />
     </div>
   );
+}
+
+const QUALITY_TABS: Array<{ id: QualityKind | ""; label: string }> = [
+  { id: "", label: "全部" },
+  { id: "bitrate.over", label: "越上限" },
+  { id: "bitrate.under", label: "低于下限" },
+  { id: "pressure.render", label: "压力·渲染" },
+  { id: "pressure.encode", label: "压力·编码" },
+  { id: "pressure.network", label: "压力·网络" },
+  { id: "pressure.mixed", label: "压力·多项" },
+];
+
+function QualityLedger({ machineId }: { machineId: string }) {
+  const [kind, setKind] = useState<QualityKind | "">("");
+  const [result, setResult] = useState<QualityQueryResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      void fetch(`/api/quality?machineId=${encodeURIComponent(machineId)}`)
+        .then((res) => res.json() as Promise<QualityQueryResult>)
+        .then((data) => {
+          if (!cancelled) setResult(data);
+        })
+        .catch(() => {
+          /* keep last */
+        });
+    };
+    load();
+    const timer = window.setInterval(load, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [machineId]);
+
+  const rows = (result?.intervals ?? []).filter((row) => !kind || row.kind === kind);
+
+  return (
+    <section className="panel quality-ledger">
+      <div className="log-head">
+        <h2>质量时段 · 近 24 小时</h2>
+      </div>
+      {result && (
+        <p className="quality-summary">
+          <span>
+            越上限 {result.stats.overCount} 段 {formatDuration(result.stats.overMs)}
+            <small>提醒</small>
+          </span>
+          <span>
+            低于下限 {result.stats.underCount} 段 {formatDuration(result.stats.underMs)}
+            <small>仅统计</small>
+          </span>
+          <span>
+            压力 {result.stats.pressureCount} 段 {formatDuration(result.stats.pressureMs)}
+            <small>记录</small>
+          </span>
+        </p>
+      )}
+      <div className="log-tools wrap">
+        {QUALITY_TABS.map((tab) => (
+          <button key={tab.label} type="button" className={kind === tab.id ? "on" : ""} onClick={() => setKind(tab.id)}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <p className="log-file">
+        推流码率连续 {result?.holdSec ?? 5} 秒越出 {(result?.minKbps ?? 2000) / 1000}–
+        {(result?.maxKbps ?? 3100) / 1000} Mbps，或压力非正常，才记一段。低于下限不推送提醒。
+      </p>
+      <ul className="quality-rows">
+        {!result && <li className="muted">正在加载质量时段…</li>}
+        {result && rows.length === 0 && <li className="muted">这段时间没有匹配的质量时段</li>}
+        {rows.map((row) => (
+          <li key={row.id} className={rowClass(row)}>
+            <span className="cat">{kindLabel(row.kind)}</span>
+            <time>
+              {formatLogTime(row.startedAt)} – {row.endedAt ? formatLogTime(row.endedAt) : "进行中"}
+            </time>
+            <span>{formatDuration(row.durationMs)}</span>
+            <span className="log-text">{bitrateHint(row)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function kindLabel(kind: QualityKind): string {
+  return QUALITY_TABS.find((tab) => tab.id === kind)?.label ?? kind;
+}
+
+function rowClass(row: QualityInterval): string {
+  if (row.kind === "bitrate.over") return "warn";
+  if (row.kind === "bitrate.under") return "";
+  return "warn";
+}
+
+function bitrateHint(row: QualityInterval): string {
+  const peak = formatBitrate(row.peakKbps);
+  const avg = formatBitrate(row.avgKbps);
+  const min = formatBitrate(row.minKbps);
+  if (row.kind === "bitrate.over") return `峰值 ${peak} · 均 ${avg}`;
+  if (row.kind === "bitrate.under") return `最低 ${min} · 均 ${avg}`;
+  return `期间码率 ${min}–${peak}`;
+}
+
+function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}小时${m}分`;
+  if (m > 0) return `${m}分${s}秒`;
+  return `${s}秒`;
 }
 
 const CATEGORY_TABS: Array<{ id: LogCategory | ""; label: string }> = [
@@ -376,10 +511,10 @@ function Metric({
   value: string;
   sub?: string;
   series?: number[];
-  tone?: "warn";
+  tone?: "warn" | "dim";
 }) {
   return (
-    <article className={tone === "warn" ? "metric warn" : "metric"}>
+    <article className={tone === "warn" ? "metric warn" : tone === "dim" ? "metric dim" : "metric"}>
       <p className="metric-label">{label}</p>
       <p className="metric-value">{value}</p>
       {sub && <p className="metric-sub">{sub}</p>}

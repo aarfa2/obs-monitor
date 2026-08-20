@@ -16,5 +16,10 @@
     "cooldownSec": 300,
     "obsDisconnectHoldSec": 5,
     "reconnectHoldSec": 15
+  },
+  "quality": {
+    "minKbps": 2000,
+    "maxKbps": 3100,
+    "holdSec": 5
   }
 }

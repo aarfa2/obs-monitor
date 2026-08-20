@@ -12,6 +12,11 @@ export type HubConfig = {
     webhookUrl: string;
     cooldownSec: number;
   };
+  quality: {
+    minKbps: number;
+    maxKbps: number;
+    holdSec: number;
+  };
 };
 
 export type AgentConfig = {
@@ -40,6 +45,11 @@ type FileShape = {
     cooldownSec?: number;
     obsDisconnectHoldSec?: number;
     reconnectHoldSec?: number;
+  };
+  quality?: {
+    minKbps?: number;
+    maxKbps?: number;
+    holdSec?: number;
   };
 };
 
@@ -84,6 +94,11 @@ export function loadHubConfig(): HubConfig {
     alerts: {
       webhookUrl: process.env.ALERT_WEBHOOK_URL ?? file.alerts?.webhookUrl ?? "",
       cooldownSec: file.alerts?.cooldownSec ?? 300,
+    },
+    quality: {
+      minKbps: file.quality?.minKbps ?? 2000,
+      maxKbps: file.quality?.maxKbps ?? 3100,
+      holdSec: file.quality?.holdSec ?? 5,
     },
   };
 }

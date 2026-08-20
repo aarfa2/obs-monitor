@@ -15,7 +15,10 @@ type Slot = {
 export class FleetRegistry {
   private slots = new Map<string, Slot>();
 
-  constructor(private readonly staleMs = STALE_DEFAULT) {}
+  constructor(
+    private readonly staleMs = STALE_DEFAULT,
+    private readonly quality = { minKbps: 2000, maxKbps: 3100 },
+  ) {}
 
   hello(machineId: string, displayName: string, hostname: string): boolean {
     const prev = this.slots.get(machineId);
@@ -97,16 +100,24 @@ export class FleetRegistry {
       alertCount: snap?.alerts.length ?? 0,
       videoSources: snap?.sources.filter((s) => s.group === "video").length ?? 0,
       bitrateKbps: snap?.stream.bitrateKbps ?? 0,
+      bitrateBand: liveBand(online && snap?.stream.active ? snap.stream.bitrateKbps : null, this.quality),
       cpuUsage: snap?.stats.cpuUsage ?? 0,
       lastError: snap?.obs.lastError ?? null,
     };
   }
 }
 
+function liveBand(kbps: number | null, quality: { minKbps: number; maxKbps: number }): "ok" | "over" | "under" {
+  if (kbps == null) return "ok";
+  if (kbps > quality.maxKbps) return "over";
+  if (kbps < quality.minKbps) return "under";
+  return "ok";
+}
+
 function rank(row: FleetMachine): number {
   if (!row.online) return 0;
   if (row.reconnecting || row.alertCount > 0) return 1;
-  if (row.pressure !== "ok") return 2;
+  if (row.pressure !== "ok" || row.bitrateBand === "over") return 2;
   if (!row.streaming) return 3;
   return 4;
 }
