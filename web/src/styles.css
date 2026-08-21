@@ -500,6 +500,94 @@ a {
   color: var(--warn);
 }
 
+.login-page {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 48px 16px;
+}
+
+.login-card {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 28px;
+  display: grid;
+  gap: 12px;
+}
+
+.login-card h1 {
+  margin: 0;
+}
+
+.login-card label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.login-card input,
+.user-form input,
+.reset-inline input {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+}
+
+.account-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.users-panel {
+  margin-top: 16px;
+}
+
+.user-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.user-form .check {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.users-table th,
+.users-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 6px;
+  text-align: left;
+  font-size: 13px;
+}
+
+.user-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.reset-inline {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
 @media (max-width: 1100px) {
   .top,
   .metrics,

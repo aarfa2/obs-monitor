@@ -234,3 +234,20 @@ export type BrowserToHub = { type: "watch"; machineId?: string };
 export type HubToBrowser =
   | { type: "fleet"; payload: FleetMachine[] }
   | { type: "snapshot"; machineId: string; payload: Snapshot };
+
+export type AccountUser = {
+  id: string;
+  username: string;
+  admin: boolean;
+  createdAt: number;
+};
+
+export type AuthMe = {
+  user: AccountUser;
+  webhookConfigured: boolean;
+  quality: {
+    minKbps: number;
+    maxKbps: number;
+    holdSec: number;
+  };
+};

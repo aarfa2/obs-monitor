@@ -10,10 +10,15 @@ import type {
   QualityQueryResult,
   Snapshot,
 } from "../../src/shared/types.ts";
+import { AccountBar } from "./AccountBar";
+import { api } from "./api";
+import { useAuth } from "./auth";
 import { FleetPage } from "./Fleet";
+import { LoginPage } from "./Login";
+import { UsersPage } from "./Users";
 import { monitorWsUrl } from "./wsUrl";
 
-function useRoute(): { page: "fleet" } | { page: "machine"; id: string } {
+function useRoute(): { page: "fleet" } | { page: "machine"; id: string } | { page: "users" } {
   const [hash, setHash] = useState(location.hash);
   useEffect(() => {
     const onHash = () => setHash(location.hash);
@@ -23,36 +28,36 @@ function useRoute(): { page: "fleet" } | { page: "machine"; id: string } {
   if (hash.startsWith("#/m/")) {
     return { page: "machine", id: decodeURIComponent(hash.slice(4)) };
   }
+  if (hash.startsWith("#/users")) return { page: "users" };
   return { page: "fleet" };
 }
 
 export function App() {
+  const auth = useAuth();
   const route = useRoute();
+  if (auth.loading) {
+    return (
+      <div className="boot">
+        <p>正在检查登录…</p>
+      </div>
+    );
+  }
+  if (!auth.user) return <LoginPage />;
+  if (route.page === "users" && auth.user.admin) return <UsersPage />;
   if (route.page === "machine") return <MachineView machineId={route.id} />;
   return <FleetPage />;
 }
 
 function MachineView({ machineId }: { machineId: string }) {
   const { snap, uiConnected } = useSnapshot(machineId);
-  const [webhookOk, setWebhookOk] = useState<boolean | null>(null);
+  const { user, webhookConfigured: webhookOk, quality: qualityCfg } = useAuth();
   const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "fail">("idle");
-  const [qualityCfg, setQualityCfg] = useState({ minKbps: 2000, maxKbps: 3100, holdSec: 5 });
-
-  useEffect(() => {
-    void fetch("/api/health")
-      .then((res) => res.json())
-      .then((data: { webhookConfigured?: boolean; quality?: { minKbps: number; maxKbps: number; holdSec: number } }) => {
-        setWebhookOk(Boolean(data.webhookConfigured));
-        if (data.quality) setQualityCfg(data.quality);
-      })
-      .catch(() => setWebhookOk(null));
-  }, []);
 
   async function testWebhook() {
     setTestState("sending");
     try {
-      const res = await fetch("/api/alerts/test", { method: "POST" });
-      setTestState(res.ok ? "sent" : "fail");
+      await api("/api/alerts/test", { method: "POST" });
+      setTestState("sent");
     } catch {
       setTestState("fail");
     }
@@ -67,6 +72,7 @@ function MachineView({ machineId }: { machineId: string }) {
             返回机群
           </a>
         </p>
+        <AccountBar />
         <p>{uiConnected ? "这台采集器还没有上报快照…" : "正在连接监控中心…"}</p>
       </div>
     );
@@ -96,9 +102,12 @@ function MachineView({ machineId }: { machineId: string }) {
           <span>{snap.obs.scene ?? "无场景"}</span>
           <span>{snap.machine?.hostname}</span>
           <span className="clock">{formatClock(snap.ts)}</span>
-          <button type="button" onClick={() => void testWebhook()} disabled={testState === "sending" || webhookOk === false}>
-            {testLabel(testState, webhookOk)}
-          </button>
+          {user?.admin && (
+            <button type="button" onClick={() => void testWebhook()} disabled={testState === "sending" || webhookOk === false}>
+              {testLabel(testState, webhookOk)}
+            </button>
+          )}
+          <AccountBar />
         </div>
       </header>
 
@@ -283,8 +292,7 @@ function QualityLedger({ machineId }: { machineId: string }) {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      void fetch(`/api/quality?machineId=${encodeURIComponent(machineId)}`)
-        .then((res) => res.json() as Promise<QualityQueryResult>)
+      void api<QualityQueryResult>(`/api/quality?machineId=${encodeURIComponent(machineId)}`)
         .then((data) => {
           if (!cancelled) setResult(data);
         })
@@ -421,8 +429,7 @@ function LogExplorer({ machineId, logFile }: { machineId: string; logFile: strin
       if (level) params.set("level", level);
       params.set("machineId", machineId);
       params.set("limit", "300");
-      void fetch(`/api/logs?${params}`)
-        .then((res) => res.json() as Promise<LogQueryResult>)
+      void api<LogQueryResult>(`/api/logs?${params}`)
         .then((data) => {
           if (!cancelled) setResult(data);
         })
@@ -565,8 +572,12 @@ function useSnapshot(machineId: string) {
         const msg = JSON.parse(ev.data) as HubToBrowser;
         if (msg.type === "snapshot" && msg.machineId === machineId) setSnap(msg.payload);
       };
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         setUiConnected(false);
+        if (ev.code === 4401) {
+          window.dispatchEvent(new Event("auth:required"));
+          return;
+        }
         if (!closed) retry = window.setTimeout(connect, 1500);
       };
     };

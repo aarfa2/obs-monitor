@@ -8,6 +8,10 @@ export type HubConfig = {
   listen: { host: string; port: number };
   token: string;
   staleSec: number;
+  admin: {
+    username: string;
+    password: string;
+  };
   alerts: {
     webhookUrl: string;
     cooldownSec: number;
@@ -39,6 +43,7 @@ type FileShape = {
   staleSec?: number;
   hubUrl?: string;
   displayName?: string;
+  admin?: { username?: string; password?: string };
   obs?: { url?: string; password?: string };
   alerts?: {
     webhookUrl?: string;
@@ -91,6 +96,10 @@ export function loadHubConfig(): HubConfig {
     },
     token,
     staleSec: file.staleSec ?? 15,
+    admin: {
+      username: process.env.OBS_MONITOR_ADMIN_USER ?? file.admin?.username ?? "",
+      password: process.env.OBS_MONITOR_ADMIN_PASSWORD ?? file.admin?.password ?? "",
+    },
     alerts: {
       webhookUrl: process.env.ALERT_WEBHOOK_URL ?? file.alerts?.webhookUrl ?? "",
       cooldownSec: file.alerts?.cooldownSec ?? 300,
