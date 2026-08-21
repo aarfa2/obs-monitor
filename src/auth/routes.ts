@@ -18,7 +18,6 @@ export function isPublicPath(url: string, method: string): boolean {
   if (path === "/api/auth/login" && method === "POST") return true;
   if (path === "/api/auth/logout" && method === "POST") return true;
   if (path === "/agent") return true;
-  if (path === "/api/ws") return true;
   if (!path.startsWith("/api")) return true;
   return false;
 }
