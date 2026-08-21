@@ -1,18 +1,14 @@
 import { useEffect, useState } from "react";
 import type { FleetMachine, HubToBrowser } from "../../src/shared/types.ts";
+import { AccountBar } from "./AccountBar";
+import { api } from "./api";
+import { useAuth } from "./auth";
 import { monitorWsUrl } from "./wsUrl";
 
 export function FleetPage() {
   const { fleet, connected } = useFleet();
-  const [webhookOk, setWebhookOk] = useState<boolean | null>(null);
+  const { user, webhookConfigured: webhookOk } = useAuth();
   const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "fail">("idle");
-
-  useEffect(() => {
-    void fetch("/api/health")
-      .then((res) => res.json())
-      .then((data: { webhookConfigured?: boolean }) => setWebhookOk(Boolean(data.webhookConfigured)))
-      .catch(() => setWebhookOk(null));
-  }, []);
 
   const online = fleet.filter((m) => m.online).length;
   const streaming = fleet.filter((m) => m.streaming).length;
@@ -44,19 +40,22 @@ export function FleetPage() {
           </span>
         </div>
         <div className="top-meta">
-          <button
-            type="button"
-            disabled={testState === "sending" || webhookOk === false}
-            onClick={() => {
-              setTestState("sending");
-              void fetch("/api/alerts/test", { method: "POST" })
-                .then((res) => setTestState(res.ok ? "sent" : "fail"))
-                .catch(() => setTestState("fail"))
-                .finally(() => window.setTimeout(() => setTestState("idle"), 2000));
-            }}
-          >
-            {webhookOk === false ? "未配置 Webhook" : testState === "idle" ? "测试 Webhook" : testState === "sending" ? "发送中…" : testState === "sent" ? "已发送" : "失败"}
-          </button>
+          {user?.admin && (
+            <button
+              type="button"
+              disabled={testState === "sending" || webhookOk === false}
+              onClick={() => {
+                setTestState("sending");
+                void api("/api/alerts/test", { method: "POST" })
+                  .then(() => setTestState("sent"))
+                  .catch(() => setTestState("fail"))
+                  .finally(() => window.setTimeout(() => setTestState("idle"), 2000));
+              }}
+            >
+              {webhookOk === false ? "未配置 Webhook" : testState === "idle" ? "测试 Webhook" : testState === "sending" ? "发送中…" : testState === "sent" ? "已发送" : "失败"}
+            </button>
+          )}
+          <AccountBar />
         </div>
       </header>
 
@@ -119,8 +118,12 @@ function useFleet() {
         const msg = JSON.parse(ev.data) as HubToBrowser;
         if (msg.type === "fleet") setFleet(msg.payload);
       };
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         setConnected(false);
+        if (ev.code === 4401) {
+          window.dispatchEvent(new Event("auth:required"));
+          return;
+        }
         if (!closed) retry = window.setTimeout(connect, 1500);
       };
     };

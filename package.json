@@ -12,6 +12,7 @@
     "build": "vite build --config web/vite.config.ts",
     "start": "tsx src/hub.ts",
     "start:agent": "tsx src/agent.ts",
+    "user:add": "tsx src/user-cli.ts",
     "pack:agent": "node scripts/pack-agent.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json"
   },

@@ -7,6 +7,10 @@
   "hubUrl": "ws://127.0.0.1:8787/agent",
   "displayName": "",
   "staleSec": 15,
+  "admin": {
+    "username": "admin",
+    "password": ""
+  },
   "obs": {
     "url": "ws://127.0.0.1:4455",
     "password": ""

@@ -6,6 +6,10 @@ import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 import type { WebSocket } from "ws";
 import { postWebhook } from "./alerts/webhook.ts";
+import { LoginGate } from "./auth/rate-limit.ts";
+import { registerAuth } from "./auth/routes.ts";
+import { SessionStore } from "./auth/session.ts";
+import { UserStore } from "./auth/users.ts";
 import { loadHubConfig, projectRoot } from "./config.ts";
 import { FleetRegistry } from "./hub/registry.ts";
 import { lanUrls } from "./lan.ts";
@@ -27,8 +31,13 @@ import type {
 
 const config = loadHubConfig();
 const root = projectRoot();
-const logStore = new LogStore(join(root, "data"));
-const qualityStore = new QualityStore(join(root, "data"));
+const dataDir = join(root, "data");
+const users = new UserStore(dataDir);
+await users.ensureSeed(config.admin);
+const sessions = new SessionStore(7 * 24 * 60 * 60 * 1000);
+const loginGate = new LoginGate();
+const logStore = new LogStore(dataDir);
+const qualityStore = new QualityStore(dataDir);
 const quality = new QualityTracker(
   qualityStore,
   config.quality.minKbps,
@@ -41,16 +50,21 @@ const fleet = new FleetRegistry(config.staleSec * 1000, config.quality);
 const agentSockets = new Map<string, WebSocket>();
 const browsers = new Set<{ socket: WebSocket; watch: string | null }>();
 
-const app = Fastify({ logger: { level: "warn" } });
-await app.register(cors, { origin: true });
+const app = Fastify({ logger: { level: "warn" }, trustProxy: true });
+await app.register(cors, { origin: false });
 await app.register(websocket);
 
-app.get("/api/health", async () => ({
-  ok: true,
-  machines: fleet.summaries().length,
-  webhookConfigured: Boolean(config.alerts.webhookUrl),
-  quality: config.quality,
-}));
+registerAuth(app, {
+  users,
+  sessions,
+  loginGate,
+  meta: () => ({
+    webhookConfigured: Boolean(config.alerts.webhookUrl),
+    quality: config.quality,
+  }),
+});
+
+app.get("/api/health", async () => ({ ok: true }));
 
 app.get("/api/fleet", async () => fleet.summaries());
 
@@ -96,7 +110,10 @@ app.get("/api/quality", async (req, reply) => {
   return qualityStore.query(machineId, config.quality);
 });
 
-app.post("/api/alerts/test", async (_req, reply) => {
+app.post("/api/alerts/test", async (req, reply) => {
+  if (!req.account?.admin) {
+    return reply.code(403).send({ error: "需要管理员" });
+  }
   if (!config.alerts.webhookUrl) {
     return reply.code(400).send({ error: "未配置 alerts.webhookUrl" });
   }
@@ -194,7 +211,12 @@ app.get("/agent", { websocket: true }, (socket) => {
   });
 });
 
-app.get("/api/ws", { websocket: true }, (socket) => {
+app.get("/api/ws", { websocket: true }, (socket, req) => {
+  const session = sessions.fromRequest(req);
+  if (!session) {
+    socket.close(4401, "unauthorized");
+    return;
+  }
   const client = { socket, watch: null as string | null };
   browsers.add(client);
   sendBrowser(socket, { type: "fleet", payload: fleet.summaries() });
@@ -263,6 +285,7 @@ console.log("OBS Monitor 中心已启动");
 for (const url of lanUrls(config.listen.port)) console.log(`  看板 ${url}`);
 console.log(`Token: ${config.token ? "已配置" : "未配置"}`);
 console.log(`Webhook: ${config.alerts.webhookUrl ? "已配置" : "未配置"}`);
+console.log(`登录用户: ${users.list().length}（看板需登录；采集器仍用 token）`);
 
 function sendAgent(socket: WebSocket, msg: HubToAgent): void {
   socket.send(JSON.stringify(msg));
